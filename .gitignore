@@ -1,0 +1,13 @@
+node_modules/
+dist/
+public/face-age-history.js
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+.DS_Store

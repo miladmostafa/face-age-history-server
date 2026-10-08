@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: faceage
+      POSTGRES_PASSWORD: faceage
+      POSTGRES_DB: history
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U faceage -d history"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  history-server:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env.local
+        required: false
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://faceage:faceage@postgres:5432/history?schema=public
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DEMO_ENABLED: "true"
+
+volumes:
+  pgdata:
