@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { loadEnvFiles } from './env-file.js';
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
@@ -43,6 +44,7 @@ function flag(value: string | undefined, fallback: boolean): boolean {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  if (env === process.env) loadEnvFiles();
   const parsed = envSchema.safeParse(env);
   if (!parsed.success) {
     const message = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');

@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { decryptString, encryptString } from '../src/crypto.js';
+import { applyEnvText } from '../src/env-file.js';
 import { extractRefToken, toHistoryDocument, toHistoryItem } from '../src/history.js';
 import { stripImages } from '../src/privacy.js';
 
 const secret = 'test-encryption-key-please-change';
+
+describe('env files', () => {
+  it('fills missing keys and keeps existing ones', () => {
+    const env: NodeJS.ProcessEnv = { API_KEY: 'already-set' };
+    applyEnvText('API_KEY=from-file\nDATA_ENCRYPTION_KEY="secret value"\n# comment\n', env);
+    expect(env.API_KEY).toBe('already-set');
+    expect(env.DATA_ENCRYPTION_KEY).toBe('secret value');
+  });
+});
 
 describe('encryption', () => {
   it('round-trips a payload and uses a fresh IV', () => {

@@ -82,7 +82,7 @@ npm start
 
 ## Configuration
 
-Environment variables are read from the process environment. For local development, put them in `.env.local` (gitignored) or `.env`. Never commit secrets.
+Environment variables are read from the process environment. For local development, put them in `.env.local` (gitignored) or `.env`. The server loads those files on startup and does not override variables that are already set. Never commit secrets.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

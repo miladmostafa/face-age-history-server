@@ -34,20 +34,4 @@ export const historyItemSchema = z
   })
   .strip();
 
-export const createScanBodySchema = z.union([
-  z
-    .object({
-      userId: userIdSchema.optional(),
-      user: userIdSchema.optional(),
-      payload: historyItemSchema,
-    })
-    .strip(),
-  historyItemSchema.and(
-    z.object({
-      userId: userIdSchema.optional(),
-      user: userIdSchema.optional(),
-    }),
-  ),
-]);
-
 export type HistoryItemInput = z.infer<typeof historyItemSchema>;
