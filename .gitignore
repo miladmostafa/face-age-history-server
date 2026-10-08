@@ -1,4 +1,5 @@
 node_modules/
+.prisma-runtime/
 dist/
 public/face-age-history.js
 data/*.db

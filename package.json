@@ -33,19 +33,19 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./helper": {
-      "types": "./dist/src/helper/index.d.ts",
-      "import": "./dist/src/helper/index.js"
+      "types": "./dist/helper/index.d.ts",
+      "import": "./dist/helper/index.js"
     }
   },
-  "types": "./dist/src/index.d.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "dev": "node scripts/prepare-database.mjs && tsx watch src/index.ts",
     "build": "prisma generate && tsc && node scripts/build-helper.mjs",
-    "start": "node scripts/prepare-database.mjs && node dist/src/index.js",
+    "start": "node scripts/prepare-database.mjs && node dist/index.js",
     "test": "DATABASE_URL=file:./data/prisma-generate.db prisma generate && vitest run",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

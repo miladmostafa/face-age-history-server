@@ -1,6 +1,5 @@
 import { execSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 for (const name of ['.env', '.env.local']) {
@@ -37,7 +36,8 @@ const schema = readFileSync(path.resolve('prisma/schema.prisma'), 'utf8').replac
   /provider\s*=\s*"(sqlite|postgresql)"/,
   `provider = "${provider}"`,
 );
-const directory = mkdtempSync(path.join(tmpdir(), 'face-age-history-schema-'));
+const directory = path.resolve('.prisma-runtime');
+mkdirSync(directory, { recursive: true });
 const schemaPath = path.join(directory, 'schema.prisma');
 writeFileSync(schemaPath, schema);
 
