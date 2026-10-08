@@ -34,6 +34,7 @@ describe('scan history API', () => {
         ...process.env,
         API_KEY: apiKey,
         DATA_ENCRYPTION_KEY: 'test-encryption-key-please-change',
+        TOKEN_SECRET: 'test-token-secret-value',
         DEMO_ENABLED: 'false',
         STORE_IMAGES: 'false',
         RETENTION_DAYS: '30',
@@ -201,7 +202,16 @@ describe('scan history API', () => {
     const document = spec.json();
     expect(document.openapi).toBe('3.0.3');
     expect(document.paths['/api/scans']).toBeTruthy();
+    expect(document.paths['/api/tokens'].post).toBeTruthy();
     expect(document.paths['/api/users/{userId}'].delete).toBeTruthy();
+
+    const demo = await app.inject({
+      method: 'POST',
+      url: '/demo/session',
+      headers: { 'content-type': 'application/json' },
+      payload: { userId: '123' },
+    });
+    expect(demo.statusCode).toBe(404);
 
     const home = await app.inject({ method: 'GET', url: '/' });
     expect(home.statusCode).toBe(200);

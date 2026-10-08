@@ -93,9 +93,11 @@ export function createScanService(prisma: PrismaClient, options: ScanServiceOpti
       return rows.map((row) => toRecord(row, readPayload(row, options.encryptionKey)));
     },
 
-    async removeById(id: string): Promise<ScanRecord> {
+    async removeById(id: string, ownerUserId?: string): Promise<ScanRecord> {
       const row = await prisma.scan.findUnique({ where: { id } });
-      if (!row) throw new HttpError(404, 'Scan not found', 'not_found');
+      if (!row || (ownerUserId !== undefined && row.externalUserId !== ownerUserId)) {
+        throw new HttpError(404, 'Scan not found', 'not_found');
+      }
       await prisma.scan.delete({ where: { id } });
       return toRecord(row, readPayload(row, options.encryptionKey));
     },

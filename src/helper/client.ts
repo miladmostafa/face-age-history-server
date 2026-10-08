@@ -9,12 +9,23 @@ export interface FetchResponseLike {
 
 export type FetchLike = (
   url: string,
-  init?: { method?: string; headers?: Record<string, string>; body?: string },
+  init?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    credentials?: 'include' | 'omit' | 'same-origin';
+  },
 ) => Promise<FetchResponseLike>;
 
 export interface HistoryClientOptions {
   baseUrl: string;
-  apiKey: string;
+  /** Short-lived token from POST /api/tokens. Scoped to one user. Never the server API key. */
+  accessToken?: string;
+  /**
+   * Call a same-origin store proxy with cookies. The proxy adds the API key and
+   * the logged-in user id. Do not combine this with accessToken.
+   */
+  sessionProxy?: boolean;
   fetch?: FetchLike;
 }
 
@@ -42,7 +53,6 @@ export interface FaceAgeLike {
 }
 
 export interface AttachOptions extends HistoryClientOptions {
-  userId: string;
   syncOnScan?: boolean;
   restoreOnAttach?: boolean;
   includeImage?: boolean;
@@ -50,6 +60,9 @@ export interface AttachOptions extends HistoryClientOptions {
   onRestore?: (count: number) => void;
   onError?: (error: Error) => void;
 }
+
+const MASTER_KEY_ERROR =
+  'The browser helper cannot use the history server API key. Mint a short-lived accessToken on your store backend.';
 
 function defaultFetch(): FetchLike {
   const fetchImpl = (globalThis as { fetch?: FetchLike }).fetch;
@@ -59,6 +72,17 @@ function defaultFetch(): FetchLike {
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function assertBrowserCredentials(options: HistoryClientOptions): void {
+  if ('apiKey' in options && (options as { apiKey?: unknown }).apiKey !== undefined) {
+    throw new Error(MASTER_KEY_ERROR);
+  }
+  const token = typeof options.accessToken === 'string' ? options.accessToken.trim() : '';
+  const proxy = options.sessionProxy === true;
+  if (Boolean(token) === proxy) {
+    throw new Error('Pass accessToken or sessionProxy: true, and only one of them.');
+  }
 }
 
 async function readError(response: FetchResponseLike): Promise<Error> {
@@ -72,17 +96,21 @@ async function readError(response: FetchResponseLike): Promise<Error> {
 }
 
 export function createClient(options: HistoryClientOptions) {
+  assertBrowserCredentials(options);
   const fetchImpl = options.fetch ?? defaultFetch();
   const baseUrl = options.baseUrl.replace(/\/$/, '');
+  const accessToken = options.accessToken?.trim();
+  const sessionProxy = options.sessionProxy === true;
 
   async function request(path: string, init?: { method?: string; body?: unknown }): Promise<unknown> {
     const hasBody = init?.body !== undefined;
+    const headers: Record<string, string> = {};
+    if (hasBody) headers['content-type'] = 'application/json';
+    if (accessToken) headers.authorization = `Bearer ${accessToken}`;
     const response = await fetchImpl(`${baseUrl}${path}`, {
       method: init?.method ?? 'GET',
-      headers: {
-        ...(hasBody ? { 'content-type': 'application/json' } : {}),
-        'x-api-key': options.apiKey,
-      },
+      headers,
+      credentials: sessionProxy ? 'include' : 'omit',
       body: hasBody ? JSON.stringify(init.body) : undefined,
     });
     if (!response.ok) throw await readError(response);
@@ -91,25 +119,21 @@ export function createClient(options: HistoryClientOptions) {
   }
 
   return {
-    save(userId: string, payload: HistoryItem | unknown): Promise<ScanRecord> {
-      return request('/api/scans', { method: 'POST', body: { userId, payload } }) as Promise<ScanRecord>;
+    save(payload: HistoryItem | unknown): Promise<ScanRecord> {
+      return request('/api/scans', { method: 'POST', body: { payload } }) as Promise<ScanRecord>;
     },
-    list(userId: string): Promise<ScanListResponse> {
-      const query = new URLSearchParams({ user: userId });
-      return request(`/api/scans?${query.toString()}`) as Promise<ScanListResponse>;
+    list(): Promise<ScanListResponse> {
+      return request('/api/scans') as Promise<ScanListResponse>;
     },
-    deleteByToken(userId: string, token: string): Promise<ScanRecord> {
-      const query = new URLSearchParams({ user: userId, token });
+    deleteByToken(token: string): Promise<ScanRecord> {
+      const query = new URLSearchParams({ token });
       return request(`/api/scans?${query.toString()}`, { method: 'DELETE' }) as Promise<ScanRecord>;
     },
-    deleteUser(userId: string): Promise<{ userId: string; deleted: number }> {
-      return request(`/api/users/${encodeURIComponent(userId)}`, { method: 'DELETE' }) as Promise<{
-        userId: string;
-        deleted: number;
-      }>;
+    deleteUser(): Promise<{ userId: string; deleted: number }> {
+      return request('/api/users/me', { method: 'DELETE' }) as Promise<{ userId: string; deleted: number }>;
     },
-    exportUser(userId: string): Promise<ExportResponse> {
-      return request(`/api/users/${encodeURIComponent(userId)}/export`) as Promise<ExportResponse>;
+    exportUser(): Promise<ExportResponse> {
+      return request('/api/users/me/export') as Promise<ExportResponse>;
     },
   };
 }
@@ -131,6 +155,7 @@ export async function restoreHistory(faceAge: FaceAgeLike, scans: ScanRecord[], 
 /**
  * Register getAdvisorData, restore saved scans, and mirror removeHistoryItem to the server.
  * Call this before faceAge.render() so the widget can open the history gate.
+ * Pass a per-user accessToken, or sessionProxy for a same-origin store backend. Never the API key.
  */
 export async function attach(faceAge: FaceAgeLike, options: AttachOptions): Promise<{ client: HistoryClient; restored: number }> {
   if (!faceAge?.API?.getAdvisorData || !faceAge.API.setHistoryData || !faceAge.API.removeHistoryItem) {
@@ -149,8 +174,8 @@ export async function attach(faceAge: FaceAgeLike, options: AttachOptions): Prom
       reportError(error);
     }
     try {
-      if (token == null || token === '') await client.deleteUser(options.userId);
-      else await client.deleteByToken(options.userId, token);
+      if (token == null || token === '') await client.deleteUser();
+      else await client.deleteByToken(token);
     } catch (error) {
       reportError(error);
     }
@@ -174,7 +199,7 @@ export async function attach(faceAge: FaceAgeLike, options: AttachOptions): Prom
         return;
       }
       client
-        .save(options.userId, item)
+        .save(item)
         .then((scan) => options.onSync?.(scan))
         .catch(reportError);
     });
@@ -182,7 +207,7 @@ export async function attach(faceAge: FaceAgeLike, options: AttachOptions): Prom
 
   let restored = 0;
   if (options.restoreOnAttach !== false) {
-    const list = await client.list(options.userId);
+    const list = await client.list();
     restored = await restoreHistory(faceAge, list.scans);
     options.onRestore?.(restored);
   }

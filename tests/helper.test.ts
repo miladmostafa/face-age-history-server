@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { attach, createClient, type FaceAgeLike, type FetchLike } from '../src/helper/index.js';
+import { attach, createClient, type FaceAgeLike, type FetchLike, type HistoryClientOptions } from '../src/helper/index.js';
 
-function mockFetch(handler: (url: string, init?: { method?: string; body?: string }) => unknown): FetchLike {
+function mockFetch(handler: (url: string, init?: { method?: string; body?: string; headers?: Record<string, string> }) => unknown): FetchLike {
   return vi.fn(async (url, init) => ({
     ok: true,
     status: 200,
@@ -11,11 +11,14 @@ function mockFetch(handler: (url: string, init?: { method?: string; body?: strin
 }
 
 describe('browser helper client', () => {
-  it('posts advisor data and restores every scan in one setHistoryData call', async () => {
+  it('posts advisor data with a user token and restores every scan in one setHistoryData call', async () => {
     const saved: unknown[] = [];
     const fetchImpl = mockFetch((url, init) => {
       if (init?.method === 'POST') {
-        const body = JSON.parse(init.body ?? '{}') as { payload: unknown };
+        const body = JSON.parse(init.body ?? '{}') as { userId?: string; payload: unknown };
+        expect(body.userId).toBeUndefined();
+        expect(init.headers?.['x-api-key']).toBeUndefined();
+        expect(init.headers?.authorization).toBe('Bearer user-token');
         saved.push(body.payload);
         return { id: 'scan-1', userId: '123', analyzeRefToken: 'analyze_ref_live', payload: body.payload };
       }
@@ -78,8 +81,7 @@ describe('browser helper client', () => {
 
     const result = await attach(faceAge, {
       baseUrl: 'http://history.local',
-      apiKey: 'test-api-key',
-      userId: '123',
+      accessToken: 'user-token',
       fetch: fetchImpl,
     });
 
@@ -105,18 +107,55 @@ describe('browser helper client', () => {
     await faceAge.API.removeHistoryItem('older');
     expect(removed).toEqual(['older']);
     expect(fetchImpl).toHaveBeenCalledWith(
-      'http://history.local/api/scans?user=123&token=older',
-      expect.objectContaining({ method: 'DELETE' }),
+      'http://history.local/api/scans?token=older',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: { authorization: 'Bearer user-token' },
+        credentials: 'omit',
+      }),
+    );
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://history.local/api/scans',
+      expect.objectContaining({
+        method: 'GET',
+        headers: { authorization: 'Bearer user-token' },
+      }),
     );
   });
 
-  it('sends the API key header', async () => {
+  it('sends the bearer token and refuses the server API key', async () => {
     const fetchImpl = mockFetch(() => ({ userId: '123', scans: [] }));
-    const client = createClient({ baseUrl: 'http://history.local/', apiKey: 'test-api-key', fetch: fetchImpl });
-    await client.list('123');
+    const client = createClient({ baseUrl: 'http://history.local/', accessToken: 'user-token', fetch: fetchImpl });
+    await client.list();
     expect(fetchImpl).toHaveBeenCalledWith(
-      'http://history.local/api/scans?user=123',
-      expect.objectContaining({ headers: expect.objectContaining({ 'x-api-key': 'test-api-key' }) }),
+      'http://history.local/api/scans',
+      expect.objectContaining({
+        headers: { authorization: 'Bearer user-token' },
+        credentials: 'omit',
+      }),
+    );
+
+    const withKey = { baseUrl: 'http://history.local', apiKey: 'test-api-key', accessToken: 'user-token' };
+    expect(() => createClient(withKey as HistoryClientOptions)).toThrow(/API key/);
+  });
+
+  it('can call a same-origin store proxy without a token or user id', async () => {
+    const fetchImpl = mockFetch(() => ({ userId: '123', scans: [], deleted: 1 }));
+    const client = createClient({ baseUrl: '', sessionProxy: true, fetch: fetchImpl });
+    await client.save({ analysis: { analyze_ref_token: 'analyze_ref_proxy' } });
+    await client.deleteUser();
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/scans',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ payload: { analysis: { analyze_ref_token: 'analyze_ref_proxy' } } }),
+      }),
+    );
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/users/me',
+      expect.objectContaining({ method: 'DELETE', credentials: 'include', headers: {} }),
     );
   });
 });

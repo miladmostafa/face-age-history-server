@@ -3,7 +3,6 @@ import type { AppConfig } from '../config.js';
 export function renderDemoPage(config: AppConfig): string {
   const boot = JSON.stringify({
     faceageId: config.faceageClientId,
-    apiKey: config.apiKeys[0] ?? '',
   }).replace(/</g, '\\u003c');
 
   const widget = config.faceageClientId
@@ -101,7 +100,7 @@ export function renderDemoPage(config: AppConfig): string {
     <img src="https://static.getfaceage.com/logo.png" width="56" alt="Face Age logo, AI skin analysis from getfaceage.com" />
     <div>
       <h1>Face Age scan history demo</h1>
-      <p class="lede">This page embeds the <a href="https://www.npmjs.com/package/face-age">face-age</a> widget and the history helper. A scan is posted to this server, then restored with <code>setHistoryData</code> when the same user id returns.</p>
+      <p class="lede">This page embeds the <a href="https://www.npmjs.com/package/face-age">face-age</a> widget and the history helper. The server mints a short-lived token for the demo user. The page never receives the API key. A saved scan is restored with <code>setHistoryData</code> on the next visit.</p>
     </div>
   </header>
   <main>
@@ -110,8 +109,9 @@ export function renderDemoPage(config: AppConfig): string {
     </section>
     <aside class="panel" aria-label="Stored scan history">
       <h2>History for this user</h2>
-      <label for="user-id">Store user id</label>
+      <label for="user-id">Local demo user</label>
       <input id="user-id" type="text" name="user-id" autocomplete="off" value="123" />
+      <p class="meta">Local stand-in only. This page asks the server to mint a short-lived token for the id you type. A production store reads the user id from its login session and keeps the API key on the server.</p>
       <div class="row">
         <button id="apply-user" type="button">Load this user</button>
         <button id="load-samples" class="secondary" type="button" disabled>Load sample scans</button>
@@ -121,16 +121,18 @@ export function renderDemoPage(config: AppConfig): string {
       <p id="status" role="status"></p>
       <div id="scan-list"></div>
       <h2>Snippet</h2>
-      <pre><code>const faceAge = new FaceAge({
+      <pre><code>const session = await fetch('/api/face-age/session', { credentials: 'include' })
+  .then((response) => response.json());
+
+const faceAge = new FaceAge({
   elementId: 'FaceAge-module',
   faceageId: 'YOUR_CLIENT_ID',
   history: true,
 });
 
 FaceAgeHistory.attach(faceAge, {
-  baseUrl: location.origin,
-  apiKey: 'YOUR_API_KEY',
-  userId: '123',
+  baseUrl: 'https://history.example.com',
+  accessToken: session.accessToken,
 }).then(() => faceAge.render());</code></pre>
     </aside>
   </main>

@@ -69,7 +69,7 @@
 
   async function refresh() {
     if (!client) return;
-    const scans = await client.list(userId());
+    const scans = await client.list();
     renderScans(scans.scans || scans);
     return scans;
   }
@@ -79,7 +79,7 @@
     if (faceAge && faceAge.API && typeof faceAge.API.removeHistoryItem === 'function') {
       await faceAge.API.removeHistoryItem(token);
     } else if (client) {
-      await client.deleteByToken(userId(), token);
+      await client.deleteByToken(token);
     }
     await refresh();
     setStatus('Removed ' + token + '.');
@@ -119,19 +119,40 @@
     ];
   }
 
+  async function openDemoSession(id) {
+    const response = await fetch('/demo/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: id }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.accessToken) {
+      throw new Error(body.message || 'Could not open a local demo session.');
+    }
+    return body.accessToken;
+  }
+
   async function boot() {
     const id = userId();
     if (!id) {
-      setStatus('Enter the logged-in store user id.');
+      setStatus('Enter a local demo user id. A production store takes this from the login session.');
       return;
     }
     localStorage.setItem('faceage-history-user', id);
-    if (!config.apiKey || typeof FaceAgeHistory === 'undefined') {
-      setStatus('History helper is not available. Build public/face-age-history.js and set API_KEY.');
+    if (typeof FaceAgeHistory === 'undefined') {
+      setStatus('History helper is not available. Run the build so public/face-age-history.js exists.');
       return;
     }
 
-    client = FaceAgeHistory.createClient({ baseUrl: '', apiKey: config.apiKey });
+    let accessToken;
+    try {
+      accessToken = await openDemoSession(id);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Could not open a local demo session.');
+      return;
+    }
+
+    client = FaceAgeHistory.createClient({ baseUrl: '', accessToken: accessToken });
     buttons.forEach((button) => {
       if (button) button.disabled = false;
     });
@@ -168,8 +189,7 @@
     try {
       const result = await FaceAgeHistory.attach(faceAge, {
         baseUrl: '',
-        apiKey: config.apiKey,
-        userId: id,
+        accessToken: accessToken,
         onSync: function () {
           refresh().catch((error) => setStatus(error.message));
         },
@@ -199,7 +219,7 @@
     setStatus('Saving sample advisor payloads…');
     try {
       for (const payload of samplePayloads()) {
-        await client.save(userId(), payload);
+        await client.save(payload);
       }
       location.reload();
     } catch (error) {
@@ -209,7 +229,7 @@
 
   document.querySelector('#export-user')?.addEventListener('click', async () => {
     if (!client) return;
-    const data = await client.exportUser(userId());
+    const data = await client.exportUser();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -222,11 +242,11 @@
 
   document.querySelector('#delete-user')?.addEventListener('click', async () => {
     if (!client) return;
-    if (!window.confirm('Delete every stored scan for this user id?')) return;
+    if (!window.confirm('Delete every stored scan for this demo user?')) return;
     if (faceAge && faceAge.API) {
       await faceAge.API.removeHistoryItem(null);
     } else {
-      await client.deleteUser(userId());
+      await client.deleteUser();
     }
     await refresh();
     setStatus('All scans for this user were deleted.');

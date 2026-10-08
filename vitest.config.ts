@@ -10,6 +10,7 @@ export default defineConfig({
       DATABASE_URL: databaseUrl,
       API_KEY: 'test-api-key',
       DATA_ENCRYPTION_KEY: 'test-encryption-key-please-change',
+      TOKEN_SECRET: 'test-token-secret-value',
       DEMO_ENABLED: 'false',
       STORE_IMAGES: 'false',
       RETENTION_DAYS: '365',

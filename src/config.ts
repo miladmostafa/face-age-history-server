@@ -8,6 +8,8 @@ const envSchema = z.object({
   API_KEY: z.string().optional().default(''),
   API_KEYS: z.string().optional().default(''),
   DATA_ENCRYPTION_KEY: z.string().min(16, 'DATA_ENCRYPTION_KEY must be at least 16 characters'),
+  TOKEN_SECRET: z.string().min(16, 'TOKEN_SECRET must be at least 16 characters'),
+  USER_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(900),
   RETENTION_DAYS: z.coerce.number().int().min(0).max(3650).default(365),
   MAX_SCANS_PER_USER: z.coerce.number().int().min(1).max(1000).default(50),
   MAX_PAYLOAD_BYTES: z.coerce.number().int().min(1024).max(2_000_000).default(200_000),
@@ -26,6 +28,8 @@ export interface AppConfig {
   databaseUrl: string;
   apiKeys: string[];
   encryptionKey: string;
+  tokenSecret: string;
+  userTokenTtlSeconds: number;
   retentionDays: number;
   maxScansPerUser: number;
   maxPayloadBytes: number;
@@ -71,6 +75,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     databaseUrl: data.DATABASE_URL,
     apiKeys,
     encryptionKey: data.DATA_ENCRYPTION_KEY,
+    tokenSecret: data.TOKEN_SECRET,
+    userTokenTtlSeconds: data.USER_TOKEN_TTL_SECONDS,
     retentionDays: data.RETENTION_DAYS,
     maxScansPerUser: data.MAX_SCANS_PER_USER,
     maxPayloadBytes: data.MAX_PAYLOAD_BYTES,

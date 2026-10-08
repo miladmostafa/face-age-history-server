@@ -6,6 +6,7 @@ export default function setup(): void {
   process.env.DATABASE_URL = databaseUrl;
   process.env.API_KEY = 'test-api-key';
   process.env.DATA_ENCRYPTION_KEY = 'test-encryption-key-please-change';
+  process.env.TOKEN_SECRET = 'test-token-secret-value';
   for (const suffix of ['', '-journal', '-wal', '-shm']) {
     rmSync(dbFile + suffix, { force: true });
   }

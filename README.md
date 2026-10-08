@@ -14,7 +14,7 @@ Built for stores and developers who embed face-age and want cross-device skin sc
 
 - REST API to create, list, and delete face-age scans
 - SQLite by default, PostgreSQL when `DATABASE_URL` is a Postgres URL
-- API key authentication (`X-Api-Key` or `Authorization: Bearer`)
+- Server API key for your store backend, plus short-lived per-user access tokens for the browser
 - Browser helper that syncs `API.getAdvisorData()` and restores history with `API.setHistoryData()`
 - Per-user export and a GDPR-style delete that erases every scan for that user id
 - AES-256-GCM encryption at rest
@@ -28,23 +28,29 @@ Built for stores and developers who embed face-age and want cross-device skin sc
 Face Age cannot run in Node. The shopper's browser loads the widget, the widget talks to the Face Age cloud, and this server stores the JSON result.
 
 1. Run `docker compose up`. The history server listens on port 3000.
-2. On your site, after a scan, a short snippet posts `API.getAdvisorData()` output to `POST /api/scans` with the logged-in user's id.
-3. When that user returns on another device, the snippet calls `GET /api/scans?user=123` and passes the saved results to `API.setHistoryData()`.
-4. The widget opens past scans and its Compare tab. `analyze_ref_token` is the dedupe key, so posting the same scan again updates the existing row.
-5. A privacy delete is `DELETE /api/users/123`, which removes everything stored for that user.
+2. After a shopper logs in, your store backend calls `POST /api/tokens` with the API key and that session's user id. The history server returns a short-lived access token scoped to that one user. Alternatively, your backend proxies the scan routes and never exposes this API to the browser.
+3. The page receives only that access token. The helper posts `API.getAdvisorData()` to `POST /api/scans` with `Authorization: Bearer`. It does not send the API key or a user id.
+4. When that shopper returns, the store mints a fresh token for the same session user. The helper calls `GET /api/scans` and passes the saved results to `API.setHistoryData()`. The widget opens past scans and its Compare tab. `analyze_ref_token` is the dedupe key, so posting the same scan again updates the existing row.
+5. A privacy delete from your backend is `DELETE /api/users/123` with the API key. The signed-in browser can erase only its own rows with `DELETE /api/users/me`.
 
 ```mermaid
 sequenceDiagram
   participant Shopper
+  participant Store as Store backend
   participant Widget as face-age widget
   participant Cloud as Face Age cloud
   participant History as History server
+  Shopper->>Store: Log in
+  Store->>History: POST /api/tokens with API key and session user id
+  History-->>Store: Short-lived access token
+  Store-->>Shopper: access token only
   Shopper->>Widget: Scan face
   Widget->>Cloud: Analyze photo
   Cloud-->>Widget: Skin age, damage, problems
-  Widget-->>History: POST /api/scans
+  Widget-->>History: POST /api/scans with Bearer token
   Shopper->>Widget: Return on another device
-  Widget->>History: GET /api/scans?user=123
+  Store->>History: Mint a new token for the same user
+  Widget->>History: GET /api/scans
   History-->>Widget: setHistoryData
   Shopper->>Widget: Open Compare
 ```
@@ -57,7 +63,7 @@ Requirements: Docker, or Node.js 20.
 
 ```bash
 cp .env.example .env.local
-# Set API_KEY, DATA_ENCRYPTION_KEY, and FACEAGE_CLIENT_ID
+# Set API_KEY, TOKEN_SECRET, DATA_ENCRYPTION_KEY, and FACEAGE_CLIENT_ID
 docker compose up --build
 ```
 
@@ -86,7 +92,9 @@ Environment variables are read from the process environment. For local developme
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `API_KEY` | required | Secret sent by your site or the browser helper. Comma-separated values are accepted. `API_KEYS` is an alias. |
+| `API_KEY` | required | Server-to-server secret. Your store backend sends it. The browser helper must not. Comma-separated values are accepted. `API_KEYS` is an alias. |
+| `TOKEN_SECRET` | required | HMAC secret for short-lived per-user access tokens. At least 16 characters. Keep it on the server. |
+| `USER_TOKEN_TTL_SECONDS` | `900` | Lifetime of tokens from `POST /api/tokens` and the local demo. 60 to 86400 seconds. |
 | `DATA_ENCRYPTION_KEY` | required | Password for AES-256-GCM encryption of every stored payload. At least 16 characters. |
 | `DATABASE_URL` | `file:./data/history.db` | SQLite file or a `postgresql://` URL. |
 | `PORT` | `3000` | HTTP port. |
@@ -96,7 +104,7 @@ Environment variables are read from the process environment. For local developme
 | `MAX_PAYLOAD_BYTES` | `200000` | Maximum JSON size after image removal. |
 | `STORE_IMAGES` | `false` | When `false`, facial image fields and `meta.image` are removed. `https` product image URLs are kept so restored recommendations can still render. |
 | `CORS_ORIGIN` | `*` | Comma-separated browser origins allowed to call the API. Set this to your store domain before a public deploy. |
-| `DEMO_ENABLED` | on outside production | Serves the widget demo at `/`. Turn it off on a public server so the API key is not written into HTML. |
+| `DEMO_ENABLED` | on outside production | Serves the widget demo at `/`. The demo mints a token with `POST /demo/session` for the id typed on the page. Turn this off on any public host, because that endpoint can mint a token for any id. It does not put `API_KEY` or `TOKEN_SECRET` in the HTML. |
 | `FACEAGE_CLIENT_ID` | empty | Client ID used only by the demo page. |
 | `RATE_LIMIT_MAX` | `120` | Requests per minute per IP. |
 | `LOG_LEVEL` | `info` | Pino log level. |
@@ -118,11 +126,35 @@ The helper is published in the browser as `FaceAgeHistory` from `/face-age-histo
 
 Call `attach` before `render`. The widget reads history while it renders, and a later `setHistoryData` call would miss that first paint.
 
+The helper never accepts the server API key and never sends a user id. Your store backend decides who the shopper is.
+
+### Signed per-user token
+
+After login, the store backend mints a token and the page only receives `accessToken`:
+
+```js
+// Store backend. userId comes from the login session, not from the browser.
+app.get('/api/face-age/session', requireLogin, async (req, res) => {
+  const minted = await fetch('https://history.example.com/api/tokens', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': process.env.HISTORY_API_KEY,
+    },
+    body: JSON.stringify({ userId: req.session.userId }),
+  }).then((response) => response.json());
+  res.json({ accessToken: minted.accessToken, expiresAt: minted.expiresAt });
+});
+```
+
 ```html
 <div id="FaceAge-module"></div>
 <script src="https://cdn.jsdelivr.net/npm/face-age@2.4.13/dist/faceage.js"></script>
 <script src="https://history.example.com/face-age-history.js"></script>
 <script>
+  const session = await fetch('/api/face-age/session', { credentials: 'include' })
+    .then((response) => response.json());
+
   const faceAge = new FaceAge({
     elementId: 'FaceAge-module',
     faceageId: 'YOUR_CLIENT_ID',
@@ -131,17 +163,31 @@ Call `attach` before `render`. The widget reads history while it renders, and a 
 
   FaceAgeHistory.attach(faceAge, {
     baseUrl: 'https://history.example.com',
-    apiKey: 'YOUR_API_KEY',
-    userId: '123',
+    accessToken: session.accessToken,
   }).then(() => faceAge.render());
 </script>
 ```
 
+The history server checks the HMAC, the expiry, and the `sub` claim. A token for user `123` cannot list, create, export, or delete scans for any other user. Putting that token in `X-Api-Key` does not authenticate.
+
+### Store proxy
+
+If you would rather not give the browser a history token, proxy the scan routes on your own origin. The proxy reads the user id from the session, adds `X-Api-Key`, and forwards the call. The helper then sends cookies and nothing else:
+
+```js
+FaceAgeHistory.attach(faceAge, {
+  baseUrl: '',
+  sessionProxy: true,
+});
+```
+
+Proxy `POST /api/scans`, `GET /api/scans`, `DELETE /api/scans`, `DELETE /api/users/me`, and `GET /api/users/me/export`. Map `/me` to the session user on the history server (`DELETE /api/users/{sessionUserId}` and the matching export).
+
 What the helper does:
 
-- Registers `API.getAdvisorData()`. When a scan finishes, it posts the result to `/api/scans`.
-- On load, fetches `GET /api/scans?user=123` and calls `API.setHistoryData()` once with every saved scan.
-- Wraps `API.removeHistoryItem(token)` so a local delete also deletes that scan on the server. `removeHistoryItem(null)` deletes the user.
+- Registers `API.getAdvisorData()`. When a scan finishes, it posts the result to `/api/scans` with no user id in the body.
+- On load, fetches `GET /api/scans` and calls `API.setHistoryData()` once with every saved scan.
+- Wraps `API.removeHistoryItem(token)` so a local delete also deletes that scan on the server. `removeHistoryItem(null)` calls `DELETE /api/users/me`.
 
 face-age 2.4.13 replaces its in-memory history on every `setHistoryData` call. Sending scans one by one would leave only the last scan, and Compare would have nothing to compare. The helper therefore sends one history document:
 
@@ -178,13 +224,42 @@ In the published 2.4.13 build, `getAdvisorData` is invoked with the problems arr
 
 `meta.ts` is a millisecond timestamp. `meta.quality` may include `lightingScore`, `lighting`, `brightness`, `sharpnessScore`, `sharpness`, `blur`, `noise`, and `confidence` as finite numbers from 0 to 100. The helper does not send `meta.image` unless you pass `includeImage: true`, and even then only for `http` or `https` URLs.
 
-The API key is visible to the browser. Lock `CORS_ORIGIN` to your store, and treat the key as a rotatable integration secret. For a stricter setup, proxy these routes through your backend and keep the key there.
+Keep `API_KEY` and `TOKEN_SECRET` on the server. Lock `CORS_ORIGIN` to your store before a public deploy. The local demo at `/` is a stand-in for the store login: it calls `POST /demo/session` and must stay off on public hosts.
 
 ## API reference
 
 Interactive docs: `/docs`. Machine-readable spec: `/openapi.json`.
 
-All `/api/*` routes require `X-Api-Key: <API_KEY>` or `Authorization: Bearer <API_KEY>`.
+Two credentials are accepted on `/api/*`:
+
+- `X-Api-Key: <API_KEY>` or `Authorization: Bearer <API_KEY>` is the server API key. You must pass the store user's id (`userId` in the body, or `user` in the query). This is the store-backend path.
+- `Authorization: Bearer <accessToken>` is a per-user token from `POST /api/tokens`. The user id is the token subject. Omit `userId`. A different user id returns `403`.
+
+`X-Api-Key` accepts only the server API key. A user token in that header is rejected.
+
+### Mint an access token
+
+`POST /api/tokens` requires the server API key.
+
+```bash
+curl -X POST http://localhost:3000/api/tokens \
+  -H "X-Api-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "userId": "123" }'
+```
+
+Response:
+
+```json
+{
+  "accessToken": "v1.<payload>.<hmac>",
+  "tokenType": "Bearer",
+  "userId": "123",
+  "expiresAt": "2026-01-01T00:15:00.000Z"
+}
+```
+
+Optional `ttlSeconds` overrides `USER_TOKEN_TTL_SECONDS` for that token (60–86400). A per-user token cannot call this route.
 
 ### Create or update a scan
 
@@ -209,11 +284,13 @@ curl -X POST http://localhost:3000/api/scans \
   }'
 ```
 
-Returns `201` when the token is new for that user and `200` when the same `analyze_ref_token` is updated. `user` is accepted as an alias of `userId`.
+Returns `201` when the token is new for that user and `200` when the same `analyze_ref_token` is updated. `user` is accepted as an alias of `userId` for API key callers. A browser call with an access token sends only `payload`.
 
 ### List scans
 
-`GET /api/scans?user=123`
+`GET /api/scans?user=123` with the API key.
+
+`GET /api/scans` with a per-user access token.
 
 Newest first. Optional `limit` (1–100, default 50) and `offset`.
 
@@ -221,19 +298,27 @@ Newest first. Optional `limit` (1–100, default 50) and `offset`.
 
 `DELETE /api/scans/:id`
 
-`DELETE /api/scans?user=123&token=analyze_ref_abc123`
+`DELETE /api/scans?user=123&token=analyze_ref_abc123` with the API key.
+
+`DELETE /api/scans?token=analyze_ref_abc123` with a per-user access token.
+
+An access token that names another user's scan id gets `404`, and that scan stays stored.
 
 ### Export a user
 
-`GET /api/users/123/export`
+`GET /api/users/123/export` with the API key.
+
+`GET /api/users/me/export` with a per-user access token.
 
 Returns every stored scan for that id as JSON.
 
 ### Delete a user
 
-`DELETE /api/users/123`
+`DELETE /api/users/123` with the API key.
 
-Removes every scan stored for that id. Response: `{ "userId": "123", "deleted": 4 }`. Deleting a user that has no rows returns `deleted: 0`.
+`DELETE /api/users/me` with a per-user access token.
+
+Removes every scan stored for that id. Response: `{ "userId": "123", "deleted": 4 }`. Deleting a user that has no rows returns `deleted: 0`. The API key cannot call `/api/users/me`; pass the session user id in the path from your backend.
 
 ### Health
 
@@ -244,8 +329,9 @@ Removes every scan stored for that id. Response: `{ "userId": "123", "deleted": 
 - Payloads are encrypted with AES-256-GCM before they are written. The database stores ciphertext.
 - `basCode`, data URLs, and other embedded facial image fields are removed before encryption. This service never stores the camera photo unless you opt in with `STORE_IMAGES=true`, and even then only an `http` or `https` `meta.image` URL is eligible. The raw base64 capture is always dropped.
 - `RETENTION_DAYS` deletes old rows on a schedule and whenever scans are read or written. `MAX_SCANS_PER_USER` drops the oldest rows past the cap.
-- `GET /api/users/:userId/export` and `DELETE /api/users/:userId` are the access and erase endpoints for a store user id.
-- Logs redact the API key header. Request bodies are not logged.
+- `GET /api/users/:userId/export` and `DELETE /api/users/:userId` are the access and erase endpoints for a store backend that holds the API key. The browser equivalents are `/api/users/me/export` and `DELETE /api/users/me`, and they follow the signed-in token only.
+- The server API key and the token signing secret stay off the page. A browser that holds a user token can read and delete only that user's scans.
+- Logs redact `Authorization` and `X-Api-Key`. Request bodies are not logged.
 - Analysis still happens in the shopper's browser and in the Face Age cloud, under Face Age's own terms. This repository only covers the history copy you choose to keep.
 
 ## FAQ
@@ -264,11 +350,15 @@ The helper restores every saved scan through `API.setHistoryData()` before `rend
 
 ### Can two devices share history?
 
-Yes. Use the same store user id on both devices. The history lives in this server, not in `localStorage`.
+Yes. Both devices use a token (or a proxied session) for the same store user id. The history lives in this server, not in `localStorage`. The browser does not choose whose history to load.
+
+### Does the browser hold the API key?
+
+No. Mint a short-lived token on your store backend, or proxy the history routes there. The helper throws if you pass `apiKey`.
 
 ### How do I erase a shopper?
 
-`DELETE /api/users/{userId}` with your API key. That deletes every scan for that id.
+From your store backend, `DELETE /api/users/{userId}` with the API key. That deletes every scan for that id. The shopper's own token can call `DELETE /api/users/me` and cannot erase anyone else.
 
 ### Where do I get a Client ID?
 
