@@ -86,6 +86,16 @@ npm start
 
 `npm run dev` rebuilds the database schema and restarts on file changes.
 
+### Install the face-age widget
+
+The skin analysis widget is a separate package from this history server. In the storefront or app that renders the widget and the history helper, install the newest face-age release:
+
+```bash
+npm install face-age@latest
+```
+
+Run that command in the project that serves the shopper page, then load `node_modules/face-age/dist/faceage.js` from that install (or the file your bundler emits). Re-run `npm install face-age@latest` when you want the page on the newest face-age version. This does not replace `npm install` for the history server.
+
 ## Configuration
 
 Environment variables are read from the process environment. For local development, put them in `.env.local` (gitignored) or `.env`. The server loads those files on startup and does not override variables that are already set. Never commit secrets.
@@ -117,12 +127,23 @@ The history server does not call Face Age on your behalf. The widget does, and t
 2. Copy the Client ID from the panel.
 3. Pass it to `new FaceAge({ faceageId: 'YOUR_CLIENT_ID' })` on your site.
 4. For this repo's demo page, set `FACEAGE_CLIENT_ID` in `.env.local` and restart. Do not commit the value.
+5. In the project that renders the widget, install the newest face-age package with `npm install face-age@latest` (see [Install the face-age widget](#install-the-face-age-widget)).
 
 The widget mounts directly in the page, in an element with id `FaceAge-module`. It is not iframed by your code. face-age 2.4.x returns skin age, a skin health / damage percentage, and 13 problem scores. It does not return real age or gender.
 
 ## Browser helper
 
 The helper is published in the browser as `FaceAgeHistory` from `/face-age-history.js`, and it can be imported from this package as `face-age-history-server/helper`.
+
+### Install face-age
+
+Before the snippet below, install the newest widget in the same project that serves the page:
+
+```bash
+npm install face-age@latest
+```
+
+Point the widget script at `dist/faceage.js` from that package so the shopper page stays on the latest face-age release. On a CDN, use the `face-age@latest` URL.
 
 Call `attach` before `render`. The widget reads history while it renders, and a later `setHistoryData` call would miss that first paint.
 
@@ -149,7 +170,7 @@ app.get('/api/face-age/session', requireLogin, async (req, res) => {
 
 ```html
 <div id="FaceAge-module"></div>
-<script src="https://cdn.jsdelivr.net/npm/face-age@2.4.13/dist/faceage.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/face-age@latest/dist/faceage.js"></script>
 <script src="https://history.example.com/face-age-history.js"></script>
 <script>
   const session = await fetch('/api/face-age/session', { credentials: 'include' })
