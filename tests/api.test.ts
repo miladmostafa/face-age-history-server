@@ -217,5 +217,13 @@ describe('scan history API', () => {
     expect(home.statusCode).toBe(200);
     expect(home.body).toContain('Face Age scan history server');
     expect(home.body).toContain('https://panel.getfaceage.com/');
+    expect(home.body).toContain('rel="icon"');
+
+    const icon = await app.inject({ method: 'GET', url: '/favicon.ico' });
+    expect(icon.statusCode).toBe(302);
+    expect(icon.headers.location).toBe('https://static.getfaceage.com/logo.png');
+
+    const helper = await app.inject({ method: 'GET', url: '/face-age-history.js' });
+    expect(helper.headers['cross-origin-resource-policy']).toBe('cross-origin');
   });
 });

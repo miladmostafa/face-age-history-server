@@ -20,6 +20,7 @@ export function renderDemoPage(config: AppConfig): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex" />
   <title>Face Age scan history demo</title>
+  <link rel="icon" href="https://static.getfaceage.com/logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,680&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet" />
@@ -154,6 +155,7 @@ export function renderHomePage(): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Face Age scan history server</title>
+  <link rel="icon" href="https://static.getfaceage.com/logo.png" />
   <meta name="description" content="Self-hosted API that stores face-age skin analysis results per user and restores them for history and comparison." />
 </head>
 <body>

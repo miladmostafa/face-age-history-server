@@ -18,11 +18,14 @@ function isHttpUrl(value: string): boolean {
   return value.startsWith('https://') || value.startsWith('http://');
 }
 
-/** Data URLs and long base64 blobs are treated as embedded images. */
+const IMAGE_MAGIC_PREFIXES = ['PHN2Zy', 'iVBORw0KGgo', '/9j/', 'R0lGOD', 'UklGR'];
+
+/** Data URLs, image-magic base64, and long base64 blobs are treated as embedded images. */
 export function looksLikeEmbeddedImage(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return true;
   const compact = trimmed.replace(/\s+/g, '');
+  if (compact.length >= 24 && IMAGE_MAGIC_PREFIXES.some((prefix) => compact.startsWith(prefix))) return true;
   if (compact.length < 2048) return false;
   return /^[A-Za-z0-9+/=]+$/.test(compact);
 }

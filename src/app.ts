@@ -123,6 +123,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(helmet, {
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
+    // Store pages load /face-age-history.js from this origin. same-origin would block that script.
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
   });
   await app.register(cors, {
     origin: config.corsOrigin === '*' ? true : config.corsOrigin.split(',').map((origin) => origin.trim()),
@@ -132,7 +134,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(rateLimit, {
     max: config.rateLimitMax,
     timeWindow: '1 minute',
-    allowList: (request) => request.url === '/health' || request.url.startsWith('/docs'),
+    allowList: (request) =>
+      request.url === '/health' || request.url === '/favicon.ico' || request.url.startsWith('/docs'),
   });
   await app.register(swagger, {
     openapi: {
@@ -213,6 +216,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.get('/health', {
     schema: { hide: true },
     handler: async () => ({ status: 'ok' }),
+  });
+
+  app.get('/favicon.ico', {
+    schema: { hide: true },
+    handler: async (_request, reply) => reply.redirect('https://static.getfaceage.com/logo.png'),
   });
 
   app.get('/openapi.json', {

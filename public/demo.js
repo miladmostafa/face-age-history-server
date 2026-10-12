@@ -191,7 +191,13 @@
         baseUrl: '',
         accessToken: accessToken,
         onSync: function () {
-          refresh().catch((error) => setStatus(error.message));
+          refresh()
+            .then(function () {
+              setStatus('Saved this scan for this user.');
+            })
+            .catch(function (error) {
+              setStatus(error.message);
+            });
         },
         onRestore: function (count) {
           setStatus(count ? 'Restored ' + count + ' scan(s) into the Face Age Compare history.' : 'No saved scans for this user yet.');

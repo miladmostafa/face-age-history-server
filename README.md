@@ -348,7 +348,7 @@ Removes every scan stored for that id. Response: `{ "userId": "123", "deleted": 
 ## Privacy
 
 - Payloads are encrypted with AES-256-GCM before they are written. The database stores ciphertext.
-- `basCode`, data URLs, and other embedded facial image fields are removed before encryption. This service never stores the camera photo unless you opt in with `STORE_IMAGES=true`, and even then only an `http` or `https` `meta.image` URL is eligible. The raw base64 capture is always dropped.
+- `basCode`, data URLs, base64 face-area drawings (`areas` and `masks`), and other embedded facial image fields are removed before encryption. This service never stores the camera photo unless you opt in with `STORE_IMAGES=true`, and even then only an `http` or `https` `meta.image` URL is eligible. The raw base64 capture is always dropped.
 - `RETENTION_DAYS` deletes old rows on a schedule and whenever scans are read or written. `MAX_SCANS_PER_USER` drops the oldest rows past the cap.
 - `GET /api/users/:userId/export` and `DELETE /api/users/:userId` are the access and erase endpoints for a store backend that holds the API key. The browser equivalents are `/api/users/me/export` and `DELETE /api/users/me`, and they follow the signed-in token only.
 - The server API key and the token signing secret stay off the page. A browser that holds a user token can read and delete only that user's scans.

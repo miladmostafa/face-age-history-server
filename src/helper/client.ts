@@ -48,6 +48,7 @@ export interface FaceAgeLike {
     globals?: {
       skinAnalyzeData?: unknown;
       formData?: unknown;
+      imageSubmit?: string | null;
     };
   };
 }
@@ -63,6 +64,17 @@ export interface AttachOptions extends HistoryClientOptions {
 
 const MASTER_KEY_ERROR =
   'The browser helper cannot use the history server API key. Mint a short-lived accessToken on your store backend.';
+
+/** 1×1 transparent PNG. Keeps the widget from compositing face overlays onto a missing photo. */
+const BLANK_SCAN_IMAGE =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
+
+function ensureImageSlot(faceAge: FaceAgeLike): void {
+  const globals = faceAge.w?.globals;
+  if (!globals) return;
+  if (typeof globals.imageSubmit === 'string' && globals.imageSubmit.trim().length > 0) return;
+  globals.imageSubmit = BLANK_SCAN_IMAGE;
+}
 
 function defaultFetch(): FetchLike {
   const fetchImpl = (globalThis as { fetch?: FetchLike }).fetch;
@@ -212,5 +224,6 @@ export async function attach(faceAge: FaceAgeLike, options: AttachOptions): Prom
     options.onRestore?.(restored);
   }
 
+  ensureImageSlot(faceAge);
   return { client, restored };
 }

@@ -72,6 +72,7 @@ describe('per-user tokens and the local demo', () => {
     expect(html).not.toContain(tokenSecret);
     expect(html).not.toContain('apiKey');
     expect(html).toContain('accessToken');
+    expect(html).toContain('rel="icon"');
     expect(html).toContain('"faceageId":""');
     expect(html).not.toContain('YOUR_API_KEY');
   });

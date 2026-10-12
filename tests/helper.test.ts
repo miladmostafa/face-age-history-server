@@ -86,6 +86,7 @@ describe('browser helper client', () => {
     });
 
     expect(result.restored).toBe(2);
+    expect(faceAge.w?.globals?.imageSubmit).toMatch(/^data:image\/png/);
     expect(historyData).toMatchObject({
       latestRefId: 'newer',
       items: {
@@ -121,6 +122,20 @@ describe('browser helper client', () => {
         headers: { authorization: 'Bearer user-token' },
       }),
     );
+  });
+
+  it('keeps a real scan photo in the widget image slot', async () => {
+    const fetchImpl = mockFetch(() => ({ userId: '123', scans: [] }));
+    const faceAge: FaceAgeLike = {
+      w: { globals: { imageSubmit: 'https://cdn.example.com/face.jpg' } },
+      API: {
+        getAdvisorData: () => Promise.resolve(),
+        setHistoryData: () => Promise.resolve(true),
+        removeHistoryItem: () => Promise.resolve(true),
+      },
+    };
+    await attach(faceAge, { baseUrl: 'http://history.local', accessToken: 'user-token', fetch: fetchImpl, restoreOnAttach: false });
+    expect(faceAge.w?.globals?.imageSubmit).toBe('https://cdn.example.com/face.jpg');
   });
 
   it('sends the bearer token and refuses the server API key', async () => {

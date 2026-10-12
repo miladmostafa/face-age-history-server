@@ -65,6 +65,17 @@ describe('image stripping', () => {
     expect(stripped.note).toBeUndefined();
     expect(stripped.keep).toBe('short');
   });
+
+  it('drops short base64 face-area drawings', () => {
+    const svg = `PHN2Zy${'A'.repeat(40)}`;
+    const stripped = stripImages(
+      { analysis: { problems: [{ key: 'eyeWrinkles', masks: svg, areas: '-1', number: 5 }] } },
+      false,
+    ) as { analysis: { problems: Array<{ masks?: string; areas?: string; number: number }> } };
+    expect(stripped.analysis.problems[0].masks).toBeUndefined();
+    expect(stripped.analysis.problems[0].areas).toBe('-1');
+    expect(stripped.analysis.problems[0].number).toBe(5);
+  });
 });
 
 describe('history normalization', () => {
